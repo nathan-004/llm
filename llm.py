@@ -1,105 +1,115 @@
-import re
 import numpy as np
+import re
 
-def clean_text(text):
-    """
-    Nettoies le texte donné en enlevant la ponctuation, les espaces inutiles + diviser le texte en unités plus petites
+def enumerate(iterable):
+    return [(i, iterable[i]) for i in range(len(iterable))]
 
-    s+ -> un ou plusieurs caractères d'espacement
-    w -> caractère alphanumérique (lettres et chiffres)
-    """
+class NLP():
+    def __init__(self):
+        pass
 
-    text = text.lower()
-    text = re.sub(r'\s+', ' ', text)  # Remplacer les espaces multiples par un seul
-    text = re.sub(r'[^\w\s]', '', text)  # Supprimer la ponctuation
+    def one_hot(self, corpus):
+        """
+        Returns a vocabulary like {"word": [0,0,0,1,0]}
+        """
+        voc = self.voc_creation(corpus)
+        length = len(voc)
 
-    return text
+        for word in voc:
+            voc[word] = [0 if i != voc[word] else 1 for i in range(length)]
 
-def tokenize(text):
-    return text.split()
+        return voc
 
-def vocab_creation(token):
-    """
-    Construit un vocabulaire sous forme {"mot": index, "mot": 2}
-    """
+    def voc_creation(self, corpus):
+        """
+        Returns a vocabulary {"word": 0, "word2": 1}
+        """
+        corpus = self.clean_data(corpus)
+        voc = {}
 
-    vocab = {word: idx for idx, word in enumerate(set(token))}
+        word_i, phrase_i, i = 0,0,0
 
-    return vocab
+        while True:
+            if not corpus[phrase_i][word_i] in voc:
+                voc[corpus[phrase_i][word_i]] = i
+                i+=1
 
-def context_pairs(tokens, window_size=1):
-    """
-    Génère des fenêtres contextuelles -> tuple contenant les mots avant de window_size et après
+            word_i += 1
 
-    "Ceci est un exemple" -> [('ceci', 'est'), ('est', 'ceci'), ('est', 'un'), ('un', 'est'), ('un', 'exemple'), ('exemple', 'un')]
-    """
+            if word_i >= len(corpus[phrase_i]):
+                word_i = 0
+                phrase_i += 1
+                if phrase_i >= len(corpus):
+                    break
 
-    pairs = []
+        return voc
 
-    for i, word in enumerate(tokens):
-        start = max(0, i - window_size)
-        end = min(len(tokens), i + window_size + 1) # Prévient index négatif ou index trop grand
+    def clean_data(self, corpus):
+        """
+        Actions
+        -------
+        - Delete the punctuation
 
-        context = [tokens[j] for j in range(start, end) if j != i]
-        for ctx_word in context:
-            pairs.append((word, ctx_word))
-    return pairs
+        s+ -> un ou plusieurs caractères d'espacement
+        w -> caractère alphanumérique (lettres et chiffres)
+        """
 
-def compute_loss(target, context, target_vec, context_vec):
-    score = np.dot(target_vec, context_vec)  # Produit scalaire
-    loss = -np.log(sigmoid(score))  # Entropie croisée
-    return loss
+        for idx, text in enumerate(corpus):
+            text = re.sub(r'[^\w\s]', '', text)
+            corpus[idx] = text.split(" ")
 
-# Fonction de rétropropagation et mise à jour des vecteurs
-def sigmoid(x):
-    return 1 / (1 + np.exp(-x))
+        return corpus
 
-def update_vectors(target, context, target_vec, context_vec, learning_rate):
-    score = np.dot(target_vec, context_vec)
-    grad_target = sigmoid(score) - 1
-    grad_context = sigmoid(score) - 1
-    # Mise à jour des poids
-    target_vec -= learning_rate * grad_target * context_vec
-    context_vec -= learning_rate * grad_context * target_vec
-    return target_vec, context_vec
+class Word2Vec():
+    def __init__(self):
+        """
+        V    Number of unique words in our corpus of text ( Vocabulary )
+        x    Input layer (One hot encoding of our input word ).
+        N    Number of neurons in the hidden layer of neural network
+        W    Weights between input layer and hidden layer
+        W'   Weights between hidden layer and output layer
+        y    A softmax output layer having probabilities of every word in our vocabulary
+        """
 
-def train(pairs, vocab):
-
-    inv_vocab = {idx: word for word, idx in vocab.items()}
-    vocab_size = len(vocab)
-    embedding_dim = 5  # Dimension de l'embedding
-    learning_rate = 0.01
-
-    # Initialisation aléatoire des vecteurs (poids)
-    target_vectors = np.random.randn(vocab_size, embedding_dim)
-    context_vectors = np.random.randn(vocab_size, embedding_dim)
-
-    for target_word, context_word in pairs:
-        target_idx = vocab[target_word]
-        context_idx = vocab[context_word]
-    
-        # Récupérer les vecteurs pour le mot cible et le mot de contexte
-        target_vec = target_vectors[target_idx]
-        context_vec = context_vectors[context_idx]
-    
-        # Calculer la perte et mettre à jour les vecteurs
-        loss = compute_loss(target_word, context_word, target_vec, context_vec)
-        target_vectors[target_idx], context_vectors[context_idx] = update_vectors(target_word, context_word, target_vec, context_vec, learning_rate)
-
-        # Affichage contextualisé avec les mots et la perte au format lisible
-        print(f"({target_word} -> {context_word}) Loss: {loss:.4f}")
-
-    return (target_vectors, context_vectors)
+        self.N = 10
+        self.X_train = []
+        self.y_train = []
+        self.window_size = 2
+        self.alpha = 0.001 # ?
+        self.words = []
+        self.word_index = {}
 
 
-text = "Ceci est un exemple"
-text = clean_text(text)
-print(text)
-    
-token = tokenize(text)
-vocab = (vocab_creation(token))
-print(vocab)
-pairs = context_pairs(token)
-print(pairs)
+    def initialize(self, V, data):
+        """
+        Initie des variables importantes à partir de données.
 
-print(train(pairs, vocab))
+        Parameters
+        ----------
+        V:int
+            Nombre de mots uniques dans le corpus
+        data:dict
+            Dictionnaire sous la forme {"mot": itérations de ce mot dans le corpus}
+        """
+        self.V = V  # Nombre de mots dans le vocabulaire
+        self.W = np.random.uniform(-0.8, 0.8, (self.V, self.N))
+        self.W1 = np.random.uniform(-0.8, 0.8, (self.N, self.V))
+        self.words = data
+        for i in range(len(data)):
+            self.word_index[data[i]] = i
+
+
+
+
+corpus = ["John likes to watch movies. Mary likes movies too.",
+        "Mary also likes to watch football games."]
+
+nlp = NLP()
+
+print(nlp.one_hot(corpus))
+
+
+# https://radimrehurek.com/gensim/models/word2vec.html
+# https://www.baeldung.com/cs/convert-word-to-vector
+# https://www.geeksforgeeks.org/implement-your-own-word2vecskip-gram-model-in-python/
+# https://www.geeksforgeeks.org/continuous-bag-of-words-cbow-in-nlp/
